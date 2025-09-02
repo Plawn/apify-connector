@@ -31,10 +31,6 @@ WORKDIR /app
 COPY --from=builder /app/target/release/server server
 # set the binary as entrypoint
 
-COPY entrypoint.sh entrypoint.sh
-
-RUN chmod +x entrypoint.sh
-
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/app/server"]
 
 EXPOSE 4000
