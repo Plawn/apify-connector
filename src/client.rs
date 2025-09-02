@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -29,7 +31,7 @@ impl ApiFyClient {
         }
     }
 
-    pub async fn start_job(&self, actor: &str, body: &Value) -> anyhow::Result<Data> {
+    pub async fn start_job(&self, actor: &str, body: &HashMap<String, Value>) -> anyhow::Result<Data> {
         let url = format!(
             "https://api.apify.com/v2/acts/{}/runs?token={}",
             actor, &self.token

@@ -1,83 +1,37 @@
 use anyhow::{Context, Result};
 use apify_connector::{
     client::{ApiFyClient, State},
-    dto::Data,
-    utils::AppError,
+    dto::{Data, DataKind, ExportItem, JobCreation, KeyMapping, Response},
+    mapping_utils::{self, update_state},
+    web_utils::AppError,
 };
 use axum::{
     Json, Router,
     http::StatusCode,
     routing::{get, post},
 };
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::{NaiveDate, TimeZone, Utc};
 use serde_json::Value;
-use std::{collections::HashMap, fs::File, io::Read, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
-#[derive(Debug, Deserialize)]
-pub enum DataKind {
-    Date { format: String },
-    String,
-}
+fn prepapre_body(job: &JobCreation) -> anyhow::Result<HashMap<String, Value>> {
+    let mut body = job.settings.body.clone();
 
-#[derive(Debug, Deserialize)]
-pub struct KeyMapping {
-    from: String,
-    to: String,
-    kind: DataKind,
-}
-
-#[derive(Debug, Deserialize)]
-struct Settings {
-    actor: String,
-    token: String,
-    body: Value,
-    key_mapping: Vec<KeyMapping>, // todo make real
-}
-
-mod jackson {
-    use chrono::{DateTime, Utc};
-    use serde::{self, Serializer};
-
-    const FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
-
-    pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let s = format!("{}", date.format(FORMAT));
-        serializer.serialize_str(&s)
+    if let Some(mapping) = &job.settings.state_mapping {
+        for m in mapping {
+            if let Some(v) = job.state.get(&m.from) {
+                body.insert(m.to.clone(), v.clone());
+            }
+        }
     }
-
-    // pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
-    // where
-    //     D: Deserializer<'de>,
-    // {
-    //     // let s = String::deserialize(deserializer)?;
-    //     let s: String =Œ Option::deserialize(deserializer)?;
-    //     if let Some(s) = s {
-    //         return Ok(Some(
-    //             Utc.datetime_from_str(&s, FORMAT)
-    //         .map_err(serde::de::Error::custom)?
-    //         ))
-    //     }
-
-    //     Ok(None)
-    // }
-}
-
-/// job with all settings and state
-#[derive(Debug, Deserialize)]
-struct JobCreation {
-    settings: Settings,
-    /// Json encoded state
-    state: String,
+    Ok(body)
 }
 
 async fn start_job(client: &ApiFyClient, job: &JobCreation) -> anyhow::Result<Data> {
-    client
-        .start_job(&job.settings.actor, &job.settings.body)
-        .await
+    let body = prepapre_body(job)?;
+    // client.start_job(&job.settings.actor, &body).await
+    println!("prepapred body: {:?}", body);
+    todo!()
 }
 
 async fn fetch_results(
@@ -85,8 +39,6 @@ async fn fetch_results(
     key_mapping: &Vec<KeyMapping>,
     j: Data,
 ) -> anyhow::Result<Vec<ExportItem>> {
-    use tokio::fs::File;
-    use tokio::io::AsyncWriteExt; // for write_all()
     loop {
         if let Ok(r) = client.check_completion(&j.id).await {
             match r {
@@ -95,10 +47,6 @@ async fn fetch_results(
                 }
                 State::Succeeded => {
                     let data = client.download_results(&j.defaultDatasetId).await?;
-                    let mut file = File::create("foo.json").await?;
-                    let d = serde_json::to_string_pretty(&data).unwrap();
-                    file.write_all(d.as_bytes()).await?;
-
                     return Ok(extract_export_items(data, key_mapping)?);
                 }
                 State::Failed => anyhow::bail!("failed to run"),
@@ -216,37 +164,19 @@ fn extract_single_export_item(
     })
 }
 
-#[derive(Serialize, Clone, Debug)]
-pub struct ExportItem {
-    id: Option<String>,
-    content: String,
-    #[serde(with = "jackson")]
-    date: DateTime<Utc>,
-    metadata: HashMap<String, String>,
-}
-
-#[derive(Serialize, Debug)]
-struct Response {
-    state: String,
-    result: Vec<ExportItem>,
-}
-
 async fn handle_job(
     Json(job): Json<JobCreation>,
 ) -> Result<(StatusCode, Json<Response>), AppError> {
     // TODO: check input, ensure, key mapping has id, date and content
     let client = ApiFyClient::new(&job.settings.token);
+    let ctx = mapping_utils::Context { start: Utc::now() };
     match start_job(&client, &job).await {
         Ok(j) => match fetch_results(&client, &job.settings.key_mapping, j).await {
-            Ok(result) => Ok((
-                StatusCode::OK,
-                Json(Response {
-                    // TODO: finish here
-                    // handle date
-                    state: "{}".to_string(),
-                    result,
-                }),
-            )),
+            Ok(result) => {
+                let state =
+                    update_state(&result, &job, &ctx).map_err(|e| AppError::from(e.to_string()))?;
+                Ok((StatusCode::OK, Json(Response { state, result })))
+            }
             Err(e) => Err(AppError::from(e.to_string())),
         },
         Err(e) => Err(AppError::from(e.to_string())),

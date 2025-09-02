@@ -1,4 +1,8 @@
+use std::collections::HashMap;
+
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::client::DatasetId;
 
@@ -139,3 +143,91 @@ ex item
     }
   },
 */
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ExportItem {
+    pub id: Option<String>,
+    pub content: String,
+    #[serde(with = "jackson")]
+    pub date: DateTime<Utc>,
+    pub metadata: HashMap<String, String>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct Response {
+    pub state: String,
+    pub result: Vec<ExportItem>,
+}
+
+
+mod jackson {
+    use chrono::{DateTime, Utc};
+    use serde::{self, Serializer};
+
+    const FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
+
+    pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = format!("{}", date.format(FORMAT));
+        serializer.serialize_str(&s)
+    }
+
+    // pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+    // where
+    //     D: Deserializer<'de>,
+    // {
+    //     // let s = String::deserialize(deserializer)?;
+    //     let s: String =Œ Option::deserialize(deserializer)?;
+    //     if let Some(s) = s {
+    //         return Ok(Some(
+    //             Utc.datetime_from_str(&s, FORMAT)
+    //         .map_err(serde::de::Error::custom)?
+    //         ))
+    //     }
+
+    //     Ok(None)
+    // }
+}
+
+#[derive(Debug, Deserialize)]
+pub enum DataKind {
+    Date { format: String },
+    String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KeyMapping {
+    pub from: String,
+    pub to: String,
+    pub kind: DataKind,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StateMapping {
+    /// copy from this field
+    pub from: String,
+    /// to this field
+    pub to: String,
+    /// at the end map to this value
+    pub update: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Settings {
+    pub actor: String,
+    pub token: String,
+    pub body: HashMap<String, Value>,
+    pub key_mapping: Vec<KeyMapping>, // todo make real
+
+    pub state_mapping: Option<Vec<StateMapping>>,
+}
+
+/// job with all settings and state
+#[derive(Debug, Deserialize)]
+pub struct JobCreation {
+    pub settings: Settings,
+    /// Json encoded state
+    pub state: HashMap<String, Value>,
+}
