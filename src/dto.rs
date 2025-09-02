@@ -229,5 +229,5 @@ pub struct Settings {
 pub struct JobCreation {
     pub settings: Settings,
     /// Json encoded state
-    pub state: HashMap<String, Value>,
+    pub state: String,
 }

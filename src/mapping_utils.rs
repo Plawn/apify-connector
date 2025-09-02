@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
@@ -13,7 +15,7 @@ pub fn update_state(
     job: &JobCreation,
     ctx: &Context,
 ) -> anyhow::Result<String> {
-    let mut state = job.state.clone();
+    let mut state: HashMap<String, Value> = serde_json::from_str(&job.state)?;
 
     if let Some(mapping) = &job.settings.state_mapping {
         for m in mapping {

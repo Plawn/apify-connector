@@ -16,10 +16,10 @@ use std::{collections::HashMap, time::Duration};
 
 fn prepapre_body(job: &JobCreation) -> anyhow::Result<HashMap<String, Value>> {
     let mut body = job.settings.body.clone();
-
+    let state: HashMap<String, Value> = serde_json::from_str(&job.state)?;
     if let Some(mapping) = &job.settings.state_mapping {
         for m in mapping {
-            if let Some(v) = job.state.get(&m.from) {
+            if let Some(v) = state.get(&m.from) {
                 body.insert(m.to.clone(), v.clone());
             }
         }
@@ -29,9 +29,7 @@ fn prepapre_body(job: &JobCreation) -> anyhow::Result<HashMap<String, Value>> {
 
 async fn start_job(client: &ApiFyClient, job: &JobCreation) -> anyhow::Result<Data> {
     let body = prepapre_body(job)?;
-    // client.start_job(&job.settings.actor, &body).await
-    println!("prepapred body: {:?}", body);
-    todo!()
+    client.start_job(&job.settings.actor, &body).await
 }
 
 async fn fetch_results(
@@ -83,6 +81,7 @@ pub fn extract_export_items(
     key_mappings: &[KeyMapping],
 ) -> anyhow::Result<Vec<ExportItem>> {
     println!("count: {}", data.len());
+    println!("data: {:?}", data);
 
     let e: Vec<_> = data
         .iter()
