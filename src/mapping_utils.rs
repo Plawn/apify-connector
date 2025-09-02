@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::dto::{ExportItem, JobCreation};
 
+#[derive(Clone)]
 pub struct Context {
     pub start: DateTime<Utc>,
 }
@@ -14,14 +15,14 @@ pub fn update_state(
     // unused for now
     _result: &Vec<ExportItem>,
     job: &JobCreation,
-    ctx: &Context,
+    ctx: Context,
 ) -> anyhow::Result<String> {
     // state should be parsed once
     let mut state: HashMap<String, Value> = serde_json::from_str(&job.state)?;
     // engine should be created once
     let mut engine = Engine::new();
     let mut scope = Scope::new();
-    scope.push("start_date", ctx.start);
+    scope.push("ctx", ctx);
     engine.register_fn("format_date", |d: DateTime<Utc>, format: &str| {
         d.format(format).to_string()
     });

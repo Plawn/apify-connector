@@ -173,7 +173,7 @@ async fn handle_job(
         Ok(j) => match fetch_results(&client, &job.settings.key_mapping, j).await {
             Ok(result) => {
                 let state =
-                    update_state(&result, &job, &ctx).map_err(|e| AppError::from(e.to_string()))?;
+                    update_state(&result, &job, ctx).map_err(|e| AppError::from(e.to_string()))?;
                 Ok((StatusCode::OK, Json(Response { state, result })))
             }
             Err(e) => Err(AppError::from(e.to_string())),
