@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::client::DatasetId;
 
@@ -70,9 +70,6 @@ pub struct Stats {
 pub struct Root {
     pub data: Data,
 }
-
-
-
 
 /*
 ex item
@@ -158,7 +155,6 @@ pub struct Response {
     pub state: String,
     pub result: Vec<ExportItem>,
 }
-
 
 mod jackson {
     use chrono::{DateTime, Utc};

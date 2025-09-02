@@ -2,7 +2,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json, Response},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::error::Error;
 use std::fmt;
 
@@ -42,5 +42,3 @@ impl IntoResponse for AppError {
         (status, body).into_response()
     }
 }
-
-// S
