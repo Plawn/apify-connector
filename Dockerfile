@@ -1,5 +1,5 @@
 # Start with a rust alpine image
-FROM rust:1-alpine3.21 AS builder
+FROM rust:1-alpine3.21 AS cache_builder
 
 # to update if you want to mount git storage somewhere else
 ENV GIT_DIR=/app/._git_storage
@@ -16,6 +16,8 @@ COPY rust-toolchain.toml /app
 COPY ./src/cache_helper.rs /app/src/cache_helper.rs
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry cargo build --release --bin cache
+
+FROM cache_builder AS builder
 
 COPY ./src /app/src
 # do a release build
