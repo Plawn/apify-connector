@@ -22,7 +22,7 @@ pub fn update_state(
     // engine should be created once
     let mut engine = Engine::new();
     let mut scope = Scope::new();
-    scope.push("ctx", ctx);
+    scope.push("start_date", ctx.start);
     engine.register_fn("format_date", |d: DateTime<Utc>, format: &str| {
         d.format(format).to_string()
     });
@@ -35,7 +35,7 @@ pub fn update_state(
                 let s = &m.update[1..];
                 let result: String = engine
                     .eval_with_scope(&mut scope, s)
-                    .unwrap();
+                    .map_err(|e| anyhow::anyhow!("failed to execute update state mapping"))?;
                 result
             } else {
                 m.from.to_string()

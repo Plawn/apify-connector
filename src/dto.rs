@@ -215,7 +215,7 @@ pub struct Settings {
     pub actor: String,
     pub token: String,
     pub body: HashMap<String, Value>,
-    pub key_mapping: Vec<KeyMapping>, // todo make real
+    pub key_mapping: Vec<KeyMapping>,
 
     pub state_mapping: Option<Vec<StateMapping>>,
 }
