@@ -22,9 +22,11 @@ pub fn update_state(
     let mut engine = Engine::new();
     let mut scope = Scope::new();
     scope.push("start_date", ctx.start);
-    engine.register_fn("sub_days_and_format", |d: DateTime<Utc>, days: i64| {
-        let res = d - Duration::days(days);
-        res.format("%Y-%m-%d").to_string()
+    engine.register_fn("format_date", |d: DateTime<Utc>, format: &str| {
+        d.format(format).to_string()
+    });
+    engine.register_fn("sub_days", |d: DateTime<Utc>, days: i64| {
+        d - Duration::days(days)
     });
     if let Some(mapping) = &job.settings.state_mapping {
         for m in mapping {
