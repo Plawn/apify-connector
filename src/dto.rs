@@ -11,135 +11,103 @@ pub struct RunId(pub String);
 
 #[derive(Debug, Deserialize)]
 pub struct Data {
-    pub actId: String,
-    pub buildId: String,
-    pub buildNumber: String,
-    pub containerUrl: String,
-    pub defaultDatasetId: DatasetId,
-    pub defaultKeyValueStoreId: String,
-    pub defaultRequestQueueId: String,
-    pub finishedAt: Option<String>, // Utilisation de Option pour gérer `null`
-    pub generalAccess: String,
+    #[serde(rename = "actId")]
+    pub act_id: String,
+    #[serde(rename = "buildId")]
+    pub build_id: String,
+    #[serde(rename = "buildNumber")]
+    pub build_number: String,
+    #[serde(rename = "containerUrl")]
+    pub container_url: String,
+    #[serde(rename = "defaultDatasetId")]
+    pub default_dataset_id: DatasetId,
+    #[serde(rename = "defaultKeyValueStoreId")]
+    pub default_key_value_store_id: String,
+    #[serde(rename = "defaultRequestQueueId")]
+    pub default_request_queue_id: String,
+    #[serde(rename = "finishedAt")]
+    pub finished_at: Option<String>,
+    #[serde(rename = "generalAccess")]
+    pub general_access: String,
+    #[serde(rename = "id")]
     pub id: RunId,
+    #[serde(rename = "meta")]
     pub meta: Meta,
+    #[serde(rename = "options")]
     pub options: Options,
-    pub platformUsageBillingModel: String,
-    pub pricingInfo: PricingInfo,
-    pub startedAt: String,
+    #[serde(rename = "platformUsageBillingModel")]
+    pub platform_usage_billing_model: String,
+    #[serde(rename = "pricingInfo")]
+    pub pricing_info: PricingInfo,
+    #[serde(rename = "startedAt")]
+    pub started_at: String,
+    #[serde(rename = "stats")]
     pub stats: Stats,
+    #[serde(rename = "status")]
     pub status: String,
-    pub userId: String,
+    #[serde(rename = "userId")]
+    pub user_id: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Meta {
+    #[serde(rename = "origin")]
     pub origin: String,
-    pub userAgent: String,
+    #[serde(rename = "userAgent")]
+    pub user_agent: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Options {
+    #[serde(rename = "build")]
     build: String,
-    pub diskMbytes: u32,
-    pub maxItems: u32,
-    pub memoryMbytes: u32,
-    pub timeoutSecs: u32,
+    #[serde(rename = "diskMbytes")]
+    pub disk_m_bytes: u32,
+    #[serde(rename = "maxItems")]
+    pub max_items: u32,
+    #[serde(rename = "memoryMbytes")]
+    pub memory_m_bytes: u32,
+    #[serde(rename = "timeoutSecs")]
+    pub timeout_secs: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PricingInfo {
-    pub apifyMarginPercentage: f64,
-    pub createdAt: String,
-    pub pricePerUnitUsd: f64,
-    pub pricingModel: String,
-    pub startedAt: String,
-    pub unitName: String,
+  #[serde(rename = "apifyMarginPercentage")]
+    pub apify_margin_percentage: f64,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "pricePerUnitUsd")]
+    pub price_per_unit_usd: f64,
+    #[serde(rename = "pricingModel")]
+    pub pricing_model: String,
+    #[serde(rename = "startedAt")]
+    pub started_at: String,
+    #[serde(rename = "unitName")]
+    pub unit_name: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Stats {
-    pub computeUnits: u32,
-    pub inputBodyLen: u32,
-    pub migrationCount: u32,
-    pub rebootCount: u32,
-    pub restartCount: u32,
-    pub resurrectCount: u32,
+  #[serde(rename = "computeUnits")]
+    pub compute_units: u32,
+    #[serde(rename = "inputBodyLen")]
+    pub input_body_len: u32,
+    #[serde(rename = "migrationCount")]
+    pub migration_count: u32,
+    #[serde(rename = "rebootCount")]
+    pub reboot_count: u32,
+    #[serde(rename = "restartCount")]
+    pub restart_count: u32,
+    #[serde(rename = "resurrectCount")]
+    pub resurrect_count: u32,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Root {
     pub data: Data,
 }
-
-/*
-ex item
-  {
-    "id": "997053569",
-    "url": "https://www.tripadvisor.com/ShowUserReviews-g182183-d2311154-r997053569-Casino_De_Mont_tremblant-Mont_Tremblant_Quebec.html",
-    "title": "Passez votre chemin.",
-    "lang": "fr",
-    "locationId": "2311154",
-    "publishedDate": "2025-03-07",
-    "publishedPlatform": "OTHER",
-    "rating": 2,
-    "helpfulVotes": 0,
-    "text": "Déception totale. Aucune ambiance. Plus de sécurité que de client. Problématique vécue avec une machine et après 4 appels non répondus au personnel j’ai du aller demander au bar… dans le doute(camera) le casino na pas accommode client malgré somme mineure! stationnement extérieur gratuit. Aucun breuvage gratuit.",
-    "roomTip": null,
-    "travelDate": "2025-03",
-    "tripType": "COUPLES",
-    "user": {
-      "userId": "0D5C39776DAF248F1E499A293EA8D483",
-      "name": "Tania D",
-      "contributions": {
-        "totalContributions": 155,
-        "helpfulVotes": 102
-      },
-      "username": "carria_us",
-      "userLocation": {
-        "shortName": "Quebec City",
-        "name": "Quebec City, Canada",
-        "id": "155033"
-      },
-      "avatar": {
-        "id": "19820645",
-        "width": 205,
-        "height": 205,
-        "image": "https://dynamic-media-cdn.tripadvisor.com/media/photo-f/01/2e/70/65/avatar043.jpg"
-      },
-      "link": "www.tripadvisor.com/Profile/carria_us"
-    },
-    "ownerResponse": null,
-    "subratings": [],
-    "photos": [],
-    "placeInfo": {
-      "id": "2311154",
-      "name": "Casino De Mont-tremblant",
-      "rating": 3.5,
-      "numberOfReviews": 592,
-      "locationString": "Mont Tremblant, Quebec",
-      "latitude": 46.200977,
-      "longitude": -74.56839,
-      "webUrl": "https://www.tripadvisor.com/Attraction_Review-g182183-d2311154-Reviews-Casino_De_Mont_tremblant-Mont_Tremblant_Quebec.html",
-      "website": "https://casinos.lotoquebec.com/fr/monttremblant/restaurant/altitude",
-      "address": "300 Chemin des Pleiades, Mont Tremblant, Quebec J8E 0A7 Canada",
-      "addressObj": {
-        "street1": "300 Chemin des Pleiades",
-        "street2": "",
-        "city": "Mont Tremblant",
-        "state": null,
-        "country": "Canada",
-        "postalcode": "J8E 0A7"
-      },
-      "ratingHistogram": {
-        "count1": 27,
-        "count2": 61,
-        "count3": 218,
-        "count4": 176,
-        "count5": 110
-      }
-    }
-  },
-*/
+   
 
 #[derive(Serialize, Clone, Debug)]
 pub struct ExportItem {

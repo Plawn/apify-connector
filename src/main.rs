@@ -44,7 +44,7 @@ async fn fetch_results(
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 State::Succeeded => {
-                    let data = client.download_results(&j.defaultDatasetId).await?;
+                    let data = client.download_results(&j.default_dataset_id).await?;
                     return Ok(extract_export_items(data, key_mapping)?);
                 }
                 State::Failed => anyhow::bail!("failed to run"),
