@@ -71,7 +71,7 @@ jobs:
           cache-to: type=gha,scope=arm64,mode=max
 
   manifest:
-    needs: [build-amd64]
+    needs: [build-amd64, build-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Login to DockerHub
