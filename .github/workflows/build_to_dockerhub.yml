@@ -38,37 +38,37 @@ jobs:
           cache-from: type=gha,scope=amd64
           cache-to: type=gha,scope=amd64,mode=max
 
-  # build-arm64:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v3
+  build-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
 
-  #     - name: Set up QEMU
-  #       uses: docker/setup-qemu-action@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
 
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v2
-  #       with:
-  #         install: true
-  #         driver: docker-container
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        with:
+          install: true
+          driver: docker-container
 
-  #     - name: Login to DockerHub
-  #       uses: docker/login-action@v2
-  #       with:
-  #         username: ${{ secrets.DOCKERHUB_USERNAME }}
-  #         password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  #     - name: Build arm64
-  #       uses: docker/build-push-action@v4
-  #       with:
-  #         context: .
-  #         file: ./Dockerfile
-  #         platforms: linux/arm64
-  #         push: true
-  #         tags: plawn/apify-connector:arm64-${{ github.sha }}
-  #         cache-from: type=gha,scope=arm64
-  #         cache-to: type=gha,scope=arm64,mode=max
+      - name: Build arm64
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: plawn/apify-connector:arm64-${{ github.sha }}
+          cache-from: type=gha,scope=arm64
+          cache-to: type=gha,scope=arm64,mode=max
 
   manifest:
     needs: [build-amd64]
@@ -80,16 +80,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # - name: Create and push manifest
-      #   run: |
-      #     docker manifest create plawn/apify-connector:latest \
-      #       --amend plawn/apify-connector:amd64-${{ github.sha }} \
-      #       --amend plawn/apify-connector:arm64-${{ github.sha }}
-
-      #     docker manifest push plawn/apify-connector:latest
       - name: Create and push manifest
         run: |
           docker manifest create plawn/apify-connector:latest \
-            --amend plawn/apify-connector:amd64-${{ github.sha }}
+            --amend plawn/apify-connector:amd64-${{ github.sha }} \
+            --amend plawn/apify-connector:arm64-${{ github.sha }}
 
           docker manifest push plawn/apify-connector:latest
+      # - name: Create and push manifest
+      #   run: |
+      #     docker manifest create plawn/apify-connector:latest \
+      #       --amend plawn/apify-connector:amd64-${{ github.sha }}
+
+      #     docker manifest push plawn/apify-connector:latest
