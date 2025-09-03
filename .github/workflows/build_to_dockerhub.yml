@@ -79,7 +79,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Create and push manifest
         run: |
           docker manifest create plawn/apify-connector:latest \
