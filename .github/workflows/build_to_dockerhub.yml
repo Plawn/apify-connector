@@ -74,21 +74,18 @@ jobs:
     needs: [build-amd64, build-arm64]
     runs-on: ubuntu-latest
     steps:
-      - name: Login to DockerHub
-        uses: docker/login-action@v2
+      - uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Create and push manifest
+      - name: Create and push multi-arch manifest
         run: |
           docker manifest create plawn/apify-connector:latest \
             --amend plawn/apify-connector:amd64-${{ github.sha }} \
             --amend plawn/apify-connector:arm64-${{ github.sha }}
-
           docker manifest push plawn/apify-connector:latest
-      # - name: Create and push manifest
-      #   run: |
-      #     docker manifest create plawn/apify-connector:latest \
-      #       --amend plawn/apify-connector:amd64-${{ github.sha }}
 
-      #     docker manifest push plawn/apify-connector:latest
+          docker manifest create plawn/apify-connector:${{ github.sha }} \
+            --amend plawn/apify-connector:amd64-${{ github.sha }} \
+            --amend plawn/apify-connector:arm64-${{ github.sha }}
+          docker manifest push plawn/apify-connector:${{ github.sha }}
