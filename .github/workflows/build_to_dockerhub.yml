@@ -37,6 +37,7 @@ jobs:
           tags: plawn/apify-connector:amd64-${{ github.sha }}
           cache-from: type=gha,scope=amd64
           cache-to: type=gha,scope=amd64,mode=max
+          outputs: type=registry
 
   build-arm64:
     runs-on: ubuntu-latest
@@ -69,6 +70,7 @@ jobs:
           tags: plawn/apify-connector:arm64-${{ github.sha }}
           cache-from: type=gha,scope=arm64
           cache-to: type=gha,scope=arm64,mode=max
+          outputs: type=registry
 
   manifest:
     needs: [build-amd64, build-arm64]
