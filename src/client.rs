@@ -31,7 +31,11 @@ impl ApiFyClient {
         }
     }
 
-    pub async fn start_job(&self, actor: &str, body: &HashMap<String, Value>) -> anyhow::Result<Data> {
+    pub async fn start_job(
+        &self,
+        actor: &str,
+        body: &HashMap<String, Value>,
+    ) -> anyhow::Result<Data> {
         let url = format!(
             "https://api.apify.com/v2/acts/{}/runs?token={}",
             actor, &self.token
@@ -44,7 +48,7 @@ impl ApiFyClient {
             .await?
             .json()
             .await?;
-        return Ok(resp.data);
+        Ok(resp.data)
     }
 
     pub async fn download_results(

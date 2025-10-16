@@ -6,9 +6,15 @@ use serde_json::Value;
 
 use crate::dto::{ExportItem, JobCreation};
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct Context {
     pub start: DateTime<Utc>,
+}
+
+impl Context {
+    pub fn new() -> Self {
+        Self { start: Utc::now() }
+    }
 }
 
 pub fn update_state(
@@ -35,7 +41,7 @@ pub fn update_state(
                 let s = &m.update[1..];
                 let result: String = engine
                     .eval_with_scope(&mut scope, s)
-                    .map_err(|e| anyhow::anyhow!("failed to execute update state mapping"))?;
+                    .map_err(|_e| anyhow::anyhow!("failed to execute update state mapping"))?;
                 result
             } else {
                 m.from.to_string()

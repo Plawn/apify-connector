@@ -5,11 +5,7 @@ use apify_connector::{
     mapping_utils::{self, update_state},
     web_utils::AppError,
 };
-use axum::{
-    Json, Router,
-    http::StatusCode,
-    routing::{get, post},
-};
+use axum::{Json, Router, http::StatusCode, routing::post};
 use chrono::{NaiveDate, TimeZone, Utc};
 use serde_json::Value;
 use std::{collections::HashMap, time::Duration};
@@ -34,7 +30,7 @@ async fn start_job(client: &ApiFyClient, job: &JobCreation) -> anyhow::Result<Da
 
 async fn fetch_results(
     client: &ApiFyClient,
-    key_mapping: &Vec<KeyMapping>,
+    key_mapping: &[KeyMapping],
     j: Data,
 ) -> anyhow::Result<Vec<ExportItem>> {
     loop {
@@ -45,7 +41,7 @@ async fn fetch_results(
                 }
                 State::Succeeded => {
                     let data = client.download_results(&j.default_dataset_id).await?;
-                    return Ok(extract_export_items(data, key_mapping)?);
+                    return extract_export_items(data, key_mapping);
                 }
                 State::Failed => anyhow::bail!("failed to run"),
             }
@@ -57,22 +53,17 @@ async fn fetch_results(
 async fn main() {
     // initialize tracing
     tracing_subscriber::fmt::init();
-
+    let port = 3000;
     // build our application with a route
     let app = Router::new()
-        // `GET /` goes to `root`
-        .route("/", get(root))
         // `POST /users` goes to `create_user`
         .route("/", post(handle_job));
 
     // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+        .await
+        .unwrap();
     axum::serve(listener, app).await.unwrap();
-}
-
-// // basic handler that responds with a static string
-async fn root() -> &'static str {
-    "OK"
 }
 
 /// Extracts a Vec<ExportItem> from a serde_json::Value that is a JSON array.
@@ -80,20 +71,9 @@ pub fn extract_export_items(
     data: Vec<Value>,
     key_mappings: &[KeyMapping],
 ) -> anyhow::Result<Vec<ExportItem>> {
-    println!("count: {}", data.len());
-    println!("data: {:?}", data);
-
-    let e: Vec<_> = data
+    let e = data
         .iter()
-        .filter_map(
-            |item_value| match extract_single_export_item(item_value, key_mappings) {
-                Ok(r) => Some(r),
-                Err(_) => {
-                    // eprintln!("data failed: {} {}", item_value, e);
-                    None
-                }
-            },
-        )
+        .filter_map(|item_value| extract_single_export_item(item_value, key_mappings).ok())
         .collect();
     Ok(e)
 }
@@ -123,17 +103,16 @@ fn extract_single_export_item(
                 "id" => id = value.as_str().map(String::from),
                 "content" => content = value.as_str().map(String::from),
                 "date" => {
-                    if let DataKind::Date { format } = &mapping.kind {
-                        if let Some(s) = value.as_str() {
-                            // Add context to the error if date parsing fails
-                            let parsed_date =
-                                NaiveDate::parse_from_str(s, format).with_context(|| {
-                                    format!("Failed to parse date '{}' with format '{}'", s, format)
-                                })?;
-                            date = Some(
-                                Utc.from_utc_datetime(&parsed_date.and_hms_opt(0, 0, 0).unwrap()),
-                            );
-                        }
+                    if let DataKind::Date { format } = &mapping.kind
+                        && let Some(s) = value.as_str()
+                    {
+                        // Add context to the error if date parsing fails
+                        let parsed_date =
+                            NaiveDate::parse_from_str(s, format).with_context(|| {
+                                format!("Failed to parse date '{}' with format '{}'", s, format)
+                            })?;
+                        date =
+                            Some(Utc.from_utc_datetime(&parsed_date.and_hms_opt(0, 0, 0).unwrap()));
                     }
                 }
                 // Any other explicitly mapped key goes into metadata
@@ -148,10 +127,10 @@ fn extract_single_export_item(
 
     // Collect any unmapped fields from the source object into metadata
     for (key, value) in map {
-        if !mapped_keys.contains(key) {
-            if let Some(s) = value.as_str() {
-                metadata.insert(key.clone(), s.to_string());
-            }
+        if !mapped_keys.contains(key)
+            && let Some(s) = value.as_str()
+        {
+            metadata.insert(key.clone(), s.to_string());
         }
     }
 
@@ -163,12 +142,19 @@ fn extract_single_export_item(
     })
 }
 
+fn ensure_valid_state_mapping(job: &JobCreation) -> Result<(), AppError> {
+    let _ = update_state(&vec![], job, mapping_utils::Context::new())
+        .map_err(|_e| AppError::from("Invalid state mapping provided".to_string()))?;
+    Ok(())
+}
+
 async fn handle_job(
     Json(job): Json<JobCreation>,
 ) -> Result<(StatusCode, Json<Response>), AppError> {
     // TODO: check input, ensure, key mapping has id, date and content
     let client = ApiFyClient::new(&job.settings.token);
-    let ctx = mapping_utils::Context { start: Utc::now() };
+    ensure_valid_state_mapping(&job)?;
+    let ctx = mapping_utils::Context::new();
     match start_job(&client, &job).await {
         Ok(j) => match fetch_results(&client, &job.settings.key_mapping, j).await {
             Ok(result) => {
