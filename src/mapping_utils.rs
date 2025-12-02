@@ -4,7 +4,7 @@ use chrono::{DateTime, Duration, Utc};
 use rhai::{Engine, Scope};
 use serde_json::Value;
 
-use crate::dto::{ExportItem, JobCreation};
+use crate::dto::{ExportItem, JobCreation, StateMapping};
 
 #[derive(Clone, Debug, Default)]
 pub struct Context {
@@ -17,15 +17,14 @@ impl Context {
     }
 }
 
-pub fn update_state(
-    // unused for now
+/// Core state update logic that can be used by both typed and arbitrary actor jobs
+pub fn update_state_core(
     _result: &Vec<ExportItem>,
-    job: &JobCreation,
+    state_str: &str,
+    state_mapping: Option<&Vec<StateMapping>>,
     ctx: Context,
 ) -> anyhow::Result<String> {
-    // state should be parsed once
-    let mut state: HashMap<String, Value> = serde_json::from_str(&job.state)?;
-    // engine should be created once
+    let mut state: HashMap<String, Value> = serde_json::from_str(state_str)?;
     let mut engine = Engine::new();
     let mut scope = Scope::new();
     scope.push("start_date", ctx.start);
@@ -35,7 +34,7 @@ pub fn update_state(
     engine.register_fn("sub_days", |d: DateTime<Utc>, days: i64| {
         d - Duration::days(days)
     });
-    if let Some(mapping) = &job.settings.state_mapping {
+    if let Some(mapping) = state_mapping {
         for m in mapping {
             let result = if m.update.starts_with("$") {
                 let s = &m.update[1..];
@@ -52,4 +51,12 @@ pub fn update_state(
 
     let e = serde_json::to_string(&state)?;
     Ok(e)
+}
+
+pub fn update_state(
+    result: &Vec<ExportItem>,
+    job: &JobCreation,
+    ctx: Context,
+) -> anyhow::Result<String> {
+    update_state_core(result, &job.state, job.settings.state_mapping.as_ref(), ctx)
 }

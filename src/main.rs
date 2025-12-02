@@ -1,169 +1,46 @@
-use anyhow::{Context, Result};
-use apify_connector::{
-    client::{ApiFyClient, State},
-    dto::{Data, DataKind, ExportItem, JobCreation, KeyMapping, Response},
-    mapping_utils::{self, update_state},
-    web_utils::AppError,
+use apify_connector::handlers::{get_actor_schema, handle_arbitrary_actor, handle_job, list_actors};
+use apify_connector::metrics::init_metrics;
+use axum::{
+    Router,
+    routing::{get, post},
 };
-use axum::{Json, Router, http::StatusCode, routing::post};
-use chrono::{NaiveDate, TimeZone, Utc};
-use serde_json::Value;
-use std::{collections::HashMap, time::Duration};
+use metrics_exporter_prometheus::PrometheusHandle;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-fn prepapre_body(job: &JobCreation) -> anyhow::Result<HashMap<String, Value>> {
-    let mut body = job.settings.body.clone();
-    let state: HashMap<String, Value> = serde_json::from_str(&job.state)?;
-    if let Some(mapping) = &job.settings.state_mapping {
-        for m in mapping {
-            if let Some(v) = state.get(&m.from) {
-                body.insert(m.to.clone(), v.clone());
-            }
-        }
-    }
-    Ok(body)
-}
-
-async fn start_job(client: &ApiFyClient, job: &JobCreation) -> anyhow::Result<Data> {
-    let body = prepapre_body(job)?;
-    client.start_job(&job.settings.actor, &body).await
-}
-
-async fn fetch_results(
-    client: &ApiFyClient,
-    key_mapping: &[KeyMapping],
-    j: Data,
-) -> anyhow::Result<Vec<ExportItem>> {
-    loop {
-        if let Ok(r) = client.check_completion(&j.id).await {
-            match r {
-                State::Running => {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-                State::Succeeded => {
-                    let data = client.download_results(&j.default_dataset_id).await?;
-                    return extract_export_items(data, key_mapping);
-                }
-                State::Failed => anyhow::bail!("failed to run"),
-            }
-        }
-    }
+/// GET /metrics - Prometheus metrics endpoint
+async fn metrics_handler(
+    axum::extract::State(handle): axum::extract::State<PrometheusHandle>,
+) -> String {
+    handle.render()
 }
 
 #[tokio::main]
 async fn main() {
-    // initialize tracing
-    tracing_subscriber::fmt::init();
-    let port = 3000;
-    // build our application with a route
-    let app = Router::new()
-        // `POST /users` goes to `create_user`
-        .route("/", post(handle_job));
+    // Initialize tracing with env filter support
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "apify_connector=info,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
-    // run our app with hyper, listening globally on port 3000
+    // Initialize Prometheus metrics
+    let metrics_handle = init_metrics();
+
+    let port = 8000;
+    let app = Router::new()
+        .route("/actors", get(list_actors))
+        .route("/actors/{actor_type}", get(get_actor_schema))
+        .route("/run", post(handle_arbitrary_actor))
+        .route("/{actor_type}", post(handle_job))
+        .route("/metrics", get(metrics_handler))
+        .with_state(metrics_handle);
+
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
         .unwrap();
+
+    tracing::info!("Listening on port {}", port);
     axum::serve(listener, app).await.unwrap();
-}
-
-/// Extracts a Vec<ExportItem> from a serde_json::Value that is a JSON array.
-pub fn extract_export_items(
-    data: Vec<Value>,
-    key_mappings: &[KeyMapping],
-) -> anyhow::Result<Vec<ExportItem>> {
-    let e = data
-        .iter()
-        .filter_map(|item_value| extract_single_export_item(item_value, key_mappings).ok())
-        .collect();
-    Ok(e)
-}
-
-/// Extracts a single ExportItem from a serde_json::Value that is a JSON object.
-fn extract_single_export_item(
-    data: &Value,
-    key_mappings: &[KeyMapping],
-) -> anyhow::Result<ExportItem> {
-    let mut id = None;
-    let mut content = None;
-    let mut date = None;
-    let mut metadata = HashMap::new();
-
-    // Ensure the item is a JSON object.
-    let map = data
-        .as_object()
-        .ok_or_else(|| anyhow::anyhow!("Item in array is not a JSON object"))?;
-
-    let mut mapped_keys = std::collections::HashSet::new();
-
-    for mapping in key_mappings {
-        if let Some(value) = map.get(&mapping.from) {
-            mapped_keys.insert(&mapping.from);
-
-            match mapping.to.as_str() {
-                "id" => id = value.as_str().map(String::from),
-                "content" => content = value.as_str().map(String::from),
-                "date" => {
-                    if let DataKind::Date { format } = &mapping.kind
-                        && let Some(s) = value.as_str()
-                    {
-                        // Add context to the error if date parsing fails
-                        let parsed_date =
-                            NaiveDate::parse_from_str(s, format).with_context(|| {
-                                format!("Failed to parse date '{}' with format '{}'", s, format)
-                            })?;
-                        date =
-                            Some(Utc.from_utc_datetime(&parsed_date.and_hms_opt(0, 0, 0).unwrap()));
-                    }
-                }
-                // Any other explicitly mapped key goes into metadata
-                _ => {
-                    if let Some(s) = value.as_str() {
-                        metadata.insert(mapping.to.clone(), s.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    // Collect any unmapped fields from the source object into metadata
-    for (key, value) in map {
-        if !mapped_keys.contains(key)
-            && let Some(s) = value.as_str()
-        {
-            metadata.insert(key.clone(), s.to_string());
-        }
-    }
-
-    Ok(ExportItem {
-        id,
-        content: content.ok_or_else(|| anyhow::anyhow!("Missing 'content' field in an item"))?,
-        date: date.ok_or_else(|| anyhow::anyhow!("Missing or invalid 'date' field in an item"))?,
-        metadata,
-    })
-}
-
-fn ensure_valid_state_mapping(job: &JobCreation) -> Result<(), AppError> {
-    let _ = update_state(&vec![], job, mapping_utils::Context::new())
-        .map_err(|_e| AppError::from("Invalid state mapping provided".to_string()))?;
-    Ok(())
-}
-
-async fn handle_job(
-    Json(job): Json<JobCreation>,
-) -> Result<(StatusCode, Json<Response>), AppError> {
-    // TODO: check input, ensure, key mapping has id, date and content
-    let client = ApiFyClient::new(&job.settings.token);
-    ensure_valid_state_mapping(&job)?;
-    let ctx = mapping_utils::Context::new();
-    match start_job(&client, &job).await {
-        Ok(j) => match fetch_results(&client, &job.settings.key_mapping, j).await {
-            Ok(result) => {
-                let state =
-                    update_state(&result, &job, ctx).map_err(|e| AppError::from(e.to_string()))?;
-                Ok((StatusCode::OK, Json(Response { state, result })))
-            }
-            Err(e) => Err(AppError::from(e.to_string())),
-        },
-        Err(e) => Err(AppError::from(e.to_string())),
-    }
 }

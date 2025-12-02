@@ -180,11 +180,10 @@ pub struct StateMapping {
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
-    pub actor: String,
+    /// Actor configuration (parsed based on path parameter actor_type)
+    pub actor_config: Value,
     pub token: String,
-    pub body: HashMap<String, Value>,
     pub key_mapping: Vec<KeyMapping>,
-
     pub state_mapping: Option<Vec<StateMapping>>,
 }
 
@@ -192,6 +191,26 @@ pub struct Settings {
 #[derive(Debug, Deserialize)]
 pub struct JobCreation {
     pub settings: Settings,
+    /// Json encoded state
+    pub state: String,
+}
+
+/// Settings for running an arbitrary Apify actor
+#[derive(Debug, Deserialize)]
+pub struct ArbitraryActorSettings {
+    /// The Apify actor ID (e.g., "apify/web-scraper" or "Hvp4YfFGyLM635Q2F")
+    pub actor_id: String,
+    /// Actor input configuration as raw JSON
+    pub actor_input: Value,
+    pub token: String,
+    pub key_mapping: Vec<KeyMapping>,
+    pub state_mapping: Option<Vec<StateMapping>>,
+}
+
+/// Job request for running an arbitrary Apify actor
+#[derive(Debug, Deserialize)]
+pub struct ArbitraryActorJob {
+    pub settings: ArbitraryActorSettings,
     /// Json encoded state
     pub state: String,
 }
