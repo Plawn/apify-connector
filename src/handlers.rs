@@ -26,9 +26,9 @@ pub async fn handle_job(
 
     let response = run_job(&actor_type, &job).await.map_err(|e| {
         error!(error = %e, "Job execution failed");
-        record_http_request("POST", &format!("/{}", actor_type), 500);
+        record_http_request("POST", &format!("/{}", actor_type), 502);
         record_http_duration("POST", &format!("/{}", actor_type), start.elapsed().as_secs_f64());
-        AppError::from(e.to_string())
+        AppError::bad_gateway(e.to_string())
     })?;
 
     record_http_request("POST", &format!("/{}", actor_type), 200);
@@ -59,7 +59,7 @@ pub async fn get_actor_schema(
     let metadata = get_actor_metadata(&actor_type).ok_or_else(|| {
         record_http_request("GET", &format!("/actors/{}", actor_type), 404);
         record_http_duration("GET", &format!("/actors/{}", actor_type), start.elapsed().as_secs_f64());
-        AppError::from(format!("Unknown actor type: {}", actor_type))
+        AppError::not_found(format!("Unknown actor type: {}", actor_type))
     })?;
 
     record_http_request("GET", &format!("/actors/{}", actor_type), 200);
@@ -80,9 +80,9 @@ pub async fn handle_arbitrary_actor(
 
     let response = run_arbitrary_actor(&job).await.map_err(|e| {
         error!(error = %e, "Arbitrary actor job execution failed");
-        record_http_request("POST", "/run", 500);
+        record_http_request("POST", "/run", 502);
         record_http_duration("POST", "/run", start.elapsed().as_secs_f64());
-        AppError::from(e.to_string())
+        AppError::bad_gateway(e.to_string())
     })?;
 
     record_http_request("POST", "/run", 200);

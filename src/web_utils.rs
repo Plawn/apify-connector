@@ -3,41 +3,54 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 use serde::Serialize;
-use std::error::Error;
-use std::fmt;
+use thiserror::Error;
 
-/// JSON structure for error responses
 #[derive(Debug, Serialize)]
-pub struct ErrorResponse {
+struct ErrorResponse {
     error: String,
 }
 
-/// Custom application error type
-#[derive(Debug)]
-pub struct AppError {
-    message: String,
+#[derive(Debug, Error)]
+pub enum AppError {
+    #[error("{0}")]
+    BadRequest(String),
+
+    #[error("{0}")]
+    NotFound(String),
+
+    #[error("{0}")]
+    BadGateway(String),
+
+    #[error("{0}")]
+    Internal(String),
 }
 
 impl AppError {
-    pub fn from(message: String) -> Self {
-        Self { message }
+    pub fn bad_request(msg: impl Into<String>) -> Self {
+        Self::BadRequest(msg.into())
+    }
+
+    pub fn not_found(msg: impl Into<String>) -> Self {
+        Self::NotFound(msg.into())
+    }
+
+    pub fn bad_gateway(msg: impl Into<String>) -> Self {
+        Self::BadGateway(msg.into())
+    }
+
+    pub fn internal(msg: impl Into<String>) -> Self {
+        Self::Internal(msg.into())
     }
 }
-
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl Error for AppError {}
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let status = StatusCode::INTERNAL_SERVER_ERROR;
-        let body = Json(ErrorResponse {
-            error: self.message,
-        });
-        (status, body).into_response()
+        let status = match &self {
+            AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::BadGateway(_) => StatusCode::BAD_GATEWAY,
+            AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(ErrorResponse { error: self.to_string() })).into_response()
     }
 }
