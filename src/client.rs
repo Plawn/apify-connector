@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::Deserialize;
 use serde_json::Value;
 use tracing::{debug, info, instrument};
@@ -9,8 +10,9 @@ use crate::actors::ActorConfig;
 use crate::dto::{Data, Root, RunId};
 use crate::metrics::{record_api_duration, record_api_request};
 
+const APIFY_API_BASE: &str = "https://api.apify.com/v2";
+
 pub struct ApiFyClient {
-    token: String,
     client: reqwest::Client,
 }
 
@@ -29,10 +31,19 @@ pub struct StateDto {
 
 impl ApiFyClient {
     pub fn new(token: &str) -> Self {
-        Self {
-            token: token.to_string(),
-            client: reqwest::Client::default(),
-        }
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", token))
+                .expect("Invalid token format"),
+        );
+
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("Failed to build HTTP client");
+
+        Self { client }
     }
 
     #[instrument(skip(self, body), fields(actor = %actor))]
@@ -44,14 +55,11 @@ impl ApiFyClient {
         let start = Instant::now();
         record_api_request("start_job");
 
-        let url = format!(
-            "https://api.apify.com/v2/acts/{}/runs?token={}",
-            actor, &self.token
-        );
+        let url = format!("{}/acts/{}/runs", APIFY_API_BASE, actor);
         debug!("Sending start job request");
         let resp: Root = self
             .client
-            .post(url)
+            .post(&url)
             .json(body)
             .send()
             .await?
@@ -79,12 +87,9 @@ impl ApiFyClient {
         let start = Instant::now();
         record_api_request("download_results");
 
-        let url = format!(
-            "https://api.apify.com/v2/datasets/{}/items?token={}",
-            dataset_id, &self.token
-        );
+        let url = format!("{}/datasets/{}/items", APIFY_API_BASE, dataset_id);
         debug!("Downloading dataset results");
-        let resp: Vec<Value> = self.client.get(url).send().await?.json().await?;
+        let resp: Vec<Value> = self.client.get(&url).send().await?.json().await?;
 
         record_api_duration("download_results", start.elapsed().as_secs_f64());
         info!(item_count = resp.len(), "Downloaded results");
@@ -96,11 +101,8 @@ impl ApiFyClient {
         let start = Instant::now();
         record_api_request("check_completion");
 
-        let url = format!(
-            "https://api.apify.com/v2/actor-runs/{}?token={}",
-            run_id, &self.token
-        );
-        let resp: StateDto = self.client.get(url).send().await?.json().await?;
+        let url = format!("{}/actor-runs/{}", APIFY_API_BASE, run_id);
+        let resp: StateDto = self.client.get(&url).send().await?.json().await?;
 
         record_api_duration("check_completion", start.elapsed().as_secs_f64());
         let state = match resp.data.status.as_str() {

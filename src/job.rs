@@ -6,11 +6,31 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::{
     actors::ActorConfig,
     client::{ApiFyClient, State},
-    dto::{ArbitraryActorJob, Data, ExportItem, JobCreation, KeyMapping, Response},
+    dto::{ArbitraryActorJob, Data, ExportItem, JobCreation, KeyMapping, Response, StateMapping},
     extraction::extract_export_items,
     mapping_utils::{self, update_state, update_state_core},
     metrics::{record_job_started, Timer},
 };
+
+/// Maximum number of poll attempts before timing out (5 minutes at 1 second intervals)
+const MAX_POLL_ATTEMPTS: u32 = 300;
+
+/// Merges state mappings into a request body
+fn apply_state_mapping(
+    body: &mut HashMap<String, Value>,
+    state_str: &str,
+    state_mapping: Option<&Vec<StateMapping>>,
+) -> anyhow::Result<()> {
+    let state: HashMap<String, Value> = serde_json::from_str(state_str)?;
+    if let Some(mapping) = state_mapping {
+        for m in mapping {
+            if let Some(v) = state.get(&m.from) {
+                body.insert(m.to.clone(), v.clone());
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Prepares the request body by merging actor config with state mappings.
 #[instrument(skip(actor_config, job), fields(actor_type = %actor_config.actor_type()))]
@@ -22,14 +42,19 @@ fn prepare_body(
         .to_body()
         .map_err(|e| anyhow::anyhow!("Failed to serialize actor config: {}", e))?;
 
-    let state: HashMap<String, Value> = serde_json::from_str(&job.state)?;
-    if let Some(mapping) = &job.settings.state_mapping {
-        for m in mapping {
-            if let Some(v) = state.get(&m.from) {
-                body.insert(m.to.clone(), v.clone());
-            }
-        }
-    }
+    apply_state_mapping(&mut body, &job.state, job.settings.state_mapping.as_ref())?;
+    Ok(body)
+}
+
+/// Prepares the request body for an arbitrary actor by merging input with state mappings.
+#[instrument(skip(job), fields(actor_id = %job.settings.actor_id))]
+fn prepare_arbitrary_body(job: &ArbitraryActorJob) -> anyhow::Result<HashMap<String, Value>> {
+    let mut body: HashMap<String, Value> = match &job.settings.actor_input {
+        Value::Object(map) => map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        _ => HashMap::new(),
+    };
+
+    apply_state_mapping(&mut body, &job.state, job.settings.state_mapping.as_ref())?;
     Ok(body)
 }
 
@@ -51,25 +76,34 @@ async fn start_job(
 }
 
 /// Polls for job completion and downloads results.
-#[instrument(skip(client, job, data), fields(run_id = %data.id.0, dataset_id = %data.default_dataset_id.0))]
-async fn fetch_results(
+#[instrument(skip(client, key_mapping, data), fields(run_id = %data.id.0, dataset_id = %data.default_dataset_id.0))]
+async fn poll_and_fetch_results(
     client: &ApiFyClient,
-    job: &JobCreation,
+    key_mapping: &[KeyMapping],
     data: Data,
 ) -> anyhow::Result<Vec<ExportItem>> {
     let mut poll_count = 0u32;
+
     loop {
-        if let Ok(state) = client.check_completion(&data.id).await {
-            match state {
+        if poll_count >= MAX_POLL_ATTEMPTS {
+            error!(poll_count, "Job timed out");
+            anyhow::bail!(
+                "Job timed out after {} seconds waiting for completion",
+                MAX_POLL_ATTEMPTS
+            );
+        }
+
+        match client.check_completion(&data.id).await {
+            Ok(state) => match state {
                 State::Running => {
                     poll_count += 1;
-                    debug!(poll_count, "Job still running, waiting...");
+                    debug!(poll_count, max = MAX_POLL_ATTEMPTS, "Job still running, waiting...");
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 State::Succeeded => {
                     info!(poll_count, "Job succeeded, downloading results");
                     let raw_data = client.download_results(&data.default_dataset_id).await?;
-                    let items = extract_export_items(raw_data, &job.settings.key_mapping)?;
+                    let items = extract_export_items(raw_data, key_mapping)?;
                     info!(item_count = items.len(), "Extracted export items");
                     return Ok(items);
                 }
@@ -77,9 +111,12 @@ async fn fetch_results(
                     error!("Actor job failed");
                     anyhow::bail!("Actor job failed");
                 }
+            },
+            Err(e) => {
+                poll_count += 1;
+                warn!(poll_count, error = %e, "Failed to check job completion status, retrying...");
+                tokio::time::sleep(Duration::from_secs(1)).await;
             }
-        } else {
-            warn!(poll_count, "Failed to check job completion status");
         }
     }
 }
@@ -95,7 +132,6 @@ pub fn validate_state_mapping(job: &JobCreation) -> anyhow::Result<()> {
 /// Runs a complete job: start, poll, fetch results, update state.
 #[instrument(skip(job), fields(actor_type = %actor_type))]
 pub async fn run_job(actor_type: &str, job: &JobCreation) -> anyhow::Result<Response> {
-    // Parse the actor config from the path parameter and body
     let actor_config = ActorConfig::from_type_and_config(actor_type, job.settings.actor_config.clone())
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -119,7 +155,7 @@ pub async fn run_job(actor_type: &str, job: &JobCreation) -> anyhow::Result<Resp
         }
     };
 
-    let result = match fetch_results(&client, job, data).await {
+    let result = match poll_and_fetch_results(&client, &job.settings.key_mapping, data).await {
         Ok(result) => result,
         Err(e) => {
             error!(error = %e, "Failed to fetch results");
@@ -142,59 +178,6 @@ pub async fn run_job(actor_type: &str, job: &JobCreation) -> anyhow::Result<Resp
     info!(result_count = result.len(), "Job completed successfully");
 
     Ok(Response { state, result })
-}
-
-/// Prepares the request body for an arbitrary actor by merging input with state mappings.
-#[instrument(skip(job), fields(actor_id = %job.settings.actor_id))]
-fn prepare_arbitrary_body(job: &ArbitraryActorJob) -> anyhow::Result<HashMap<String, Value>> {
-    let mut body: HashMap<String, Value> = match &job.settings.actor_input {
-        Value::Object(map) => map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-        _ => HashMap::new(),
-    };
-
-    let state: HashMap<String, Value> = serde_json::from_str(&job.state)?;
-    if let Some(mapping) = &job.settings.state_mapping {
-        for m in mapping {
-            if let Some(v) = state.get(&m.from) {
-                body.insert(m.to.clone(), v.clone());
-            }
-        }
-    }
-    Ok(body)
-}
-
-/// Polls for job completion and downloads results for arbitrary actor.
-#[instrument(skip(client, key_mapping, data), fields(run_id = %data.id.0, dataset_id = %data.default_dataset_id.0))]
-async fn fetch_arbitrary_results(
-    client: &ApiFyClient,
-    key_mapping: &[KeyMapping],
-    data: Data,
-) -> anyhow::Result<Vec<ExportItem>> {
-    let mut poll_count = 0u32;
-    loop {
-        if let Ok(state) = client.check_completion(&data.id).await {
-            match state {
-                State::Running => {
-                    poll_count += 1;
-                    debug!(poll_count, "Job still running, waiting...");
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-                State::Succeeded => {
-                    info!(poll_count, "Job succeeded, downloading results");
-                    let raw_data = client.download_results(&data.default_dataset_id).await?;
-                    let items = extract_export_items(raw_data, key_mapping)?;
-                    info!(item_count = items.len(), "Extracted export items");
-                    return Ok(items);
-                }
-                State::Failed => {
-                    error!("Actor job failed");
-                    anyhow::bail!("Actor job failed");
-                }
-            }
-        } else {
-            warn!(poll_count, "Failed to check job completion status");
-        }
-    }
 }
 
 /// Runs an arbitrary Apify actor job.
@@ -231,7 +214,7 @@ pub async fn run_arbitrary_actor(job: &ArbitraryActorJob) -> anyhow::Result<Resp
         }
     };
 
-    let result = match fetch_arbitrary_results(&client, &job.settings.key_mapping, data).await {
+    let result = match poll_and_fetch_results(&client, &job.settings.key_mapping, data).await {
         Ok(result) => result,
         Err(e) => {
             error!(error = %e, "Failed to fetch results");

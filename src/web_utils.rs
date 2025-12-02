@@ -6,13 +6,13 @@ use serde::Serialize;
 use std::error::Error;
 use std::fmt;
 
-// Définir une structure pour les réponses d'erreur
+/// JSON structure for error responses
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     error: String,
 }
 
-// Définir un type d'erreur personnalisé
+/// Custom application error type
 #[derive(Debug)]
 pub struct AppError {
     message: String,
@@ -32,7 +32,6 @@ impl fmt::Display for AppError {
 
 impl Error for AppError {}
 
-// Implémenter la conversion en réponse HTTP pour AppError
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = StatusCode::INTERNAL_SERVER_ERROR;

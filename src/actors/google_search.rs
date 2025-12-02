@@ -49,10 +49,10 @@ impl GoogleSearchConfig {
         if self.max_results == 0 || self.max_results > 100 {
             return Err("max_results must be between 1 and 100".into());
         }
-        if let Some(ref code) = self.country_code {
-            if code.len() != 2 {
-                return Err("country_code must be 2 characters".into());
-            }
+        if let Some(ref code) = self.country_code
+            && code.len() != 2
+        {
+            return Err("country_code must be 2 characters".into());
         }
         Ok(())
     }
